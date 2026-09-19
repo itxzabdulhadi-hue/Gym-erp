@@ -2,6 +2,7 @@ import { withTenant, query } from '../../db/index.js';
 import ApiError from '../../utils/ApiError.js';
 import { logAudit } from '../audit/audit.service.js';
 import { invalidateAuthCache } from '../auth/authContext.js';
+import { shapeTheme } from '../themes/theme.shape.js';
 
 /**
  * White-label branding.
@@ -115,7 +116,7 @@ export async function getLoginBranding({ slug, domain }) {
 
   const [branding, theme] = await Promise.all([
     query('SELECT * FROM branding WHERE tenant_id = $1', [tenant.id]),
-    query('SELECT id, name, config, custom_css FROM themes WHERE tenant_id = $1 AND is_active LIMIT 1', [tenant.id]),
+    query('SELECT * FROM themes WHERE tenant_id = $1 AND is_active LIMIT 1', [tenant.id]),
   ]);
 
   const b = shapeBranding(branding.rows[0], tenant);
@@ -123,7 +124,7 @@ export async function getLoginBranding({ slug, domain }) {
     found: true,
     tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name, vertical: tenant.vertical, status: tenant.status },
     branding: b,
-    theme: theme.rows[0] || null,
+    theme: shapeTheme(theme.rows[0] || null),
   };
 }
 

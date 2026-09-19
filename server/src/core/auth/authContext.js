@@ -56,7 +56,7 @@ const ROLES_SQL = `
 
 const MODULES_SQL = 'SELECT key, enabled, sort_order, settings FROM modules WHERE tenant_id = $1 ORDER BY sort_order';
 const BRANDING_SQL = 'SELECT * FROM branding WHERE tenant_id = $1';
-const THEME_SQL = 'SELECT id, name, config, custom_css FROM themes WHERE tenant_id = $1 AND is_active LIMIT 1';
+const THEME_SQL = 'SELECT * FROM themes WHERE tenant_id = $1 AND is_active LIMIT 1';
 
 export async function loadAuthContext({ userId, tenantId, asPlatformAdmin = false }) {
   const key = `${userId}:${tenantId}:${asPlatformAdmin ? 1 : 0}`;

@@ -261,7 +261,7 @@ export async function getPublicBranding({ slug, domain }) {
   if (!tenant) return null;
   const [branding, theme] = await Promise.all([
     getBranding(tenant.id),
-    query('SELECT id, name, config, custom_css FROM themes WHERE tenant_id = $1 AND is_active LIMIT 1', [tenant.id]),
+    query('SELECT * FROM themes WHERE tenant_id = $1 AND is_active LIMIT 1', [tenant.id]),
   ]);
   return {
     tenant: { id: tenant.id, slug: tenant.slug, name: tenant.name, vertical: tenant.vertical, status: tenant.status },
@@ -275,7 +275,7 @@ export async function getTenantWorkspace(tenantId) {
   const [modules, branding, theme, plans] = await Promise.all([
     withTenant(tenantId, (c) => c.query('SELECT key, enabled, sort_order FROM modules WHERE tenant_id = $1 ORDER BY sort_order', [tenantId])),
     getBranding(tenantId),
-    query('SELECT id, name, config, custom_css FROM themes WHERE tenant_id = $1 AND is_active LIMIT 1', [tenantId]),
+    query('SELECT * FROM themes WHERE tenant_id = $1 AND is_active LIMIT 1', [tenantId]),
     withTenant(tenantId, (c) =>
       c.query('SELECT count(*)::int AS total FROM membership_plans WHERE tenant_id = $1 AND is_active', [tenantId]),
     ),

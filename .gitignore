@@ -7,6 +7,7 @@ coverage/
 !.env.example
 .pgdata/
 storage/uploads/
+**/storage/uploads/
 *.log
 .DS_Store
 .vercel
