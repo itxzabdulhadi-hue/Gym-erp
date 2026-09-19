@@ -1,4 +1,5 @@
 import { query } from '../../db/index.js';
+import { shapeTheme } from '../themes/theme.shape.js';
 
 /**
  * Everything the API needs to know about the caller, assembled once per request
@@ -88,7 +89,7 @@ async function buildTenantContext(userId, tenantId) {
     roles: roles.rows,
     modules: modules.rows,
     branding: branding.rows[0] || null,
-    theme: theme.rows[0] || null,
+    theme: shapeTheme(theme.rows[0] || null),
   });
 }
 
@@ -110,7 +111,7 @@ async function buildPlatformContext(userId, tenantId) {
     roles: [{ id: null, key: 'platform_admin', name: 'Platform administrator', is_system: true }],
     modules: modules.rows,
     branding: branding.rows[0] || null,
-    theme: theme.rows[0] || null,
+    theme: shapeTheme(theme.rows[0] || null),
     isPlatformContext: true,
   });
 }

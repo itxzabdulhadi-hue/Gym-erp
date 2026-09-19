@@ -233,13 +233,17 @@ export async function createMembership(tenantId, input, actor) {
 
     const price = input.price !== undefined ? Number(input.price) : Number(plan?.price ?? 0);
 
+    // A backdated membership (imported history, a corrected record) must not
+    // read as current - the member's status is derived from this.
+    const initialStatus = endDate < todayISO() ? 'expired' : 'active';
+
     const inserted = await client.query(
       `INSERT INTO memberships (tenant_id, member_id, plan_id, plan_name, price, start_date, end_date, status, change_type, previous_membership_id, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         tenantId, member.id, plan?.id ?? null, plan?.name ?? input.planName ?? 'Custom',
-        price, startDate, endDate, input.changeType || 'new', input.previousMembershipId ?? null,
-        input.notes ?? null, actor?.userId ?? null,
+        price, startDate, endDate, initialStatus, input.changeType || 'new',
+        input.previousMembershipId ?? null, input.notes ?? null, actor?.userId ?? null,
       ],
     );
 
@@ -315,12 +319,17 @@ export async function changeMembership(tenantId, membershipId, input, actor) {
       `${direction} to ${plan.name} on ${startDate}`,
     ]);
 
+    // The replacement membership starts now, so its own end date decides
+    // whether it reads as current.
+    const newEndDate = input.endDate || addDays(startDate, plan.duration_days);
+    const newStatus = newEndDate < todayISO() ? 'expired' : 'active';
+
     const inserted = await client.query(
       `INSERT INTO memberships (tenant_id, member_id, plan_id, plan_name, price, start_date, end_date, status, change_type, previous_membership_id, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         tenantId, current.member_id, plan.id, plan.name, Number(plan.price),
-        startDate, input.endDate || addDays(startDate, plan.duration_days), direction, membershipId,
+        startDate, newEndDate, newStatus, direction, membershipId,
         input.notes ?? `${direction} from ${current.plan_name}`, actor?.userId ?? null,
       ],
     );

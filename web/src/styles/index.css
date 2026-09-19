@@ -1,0 +1,249 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Fallback tokens. These mirror DEFAULT_THEME from @erp/shared so the first
+ * paint is correct before the tenant theme arrives; ThemeProvider then
+ * overwrites every one of them on :root. Nothing in here is brand specific.
+ */
+:root {
+  --color-primary: #4f46e5;
+  --color-primary-fg: #ffffff;
+  --color-primary-hover: #463eca;
+  --color-primary-soft: rgb(79 70 229 / 0.12);
+  --color-secondary: #0f172a;
+  --color-secondary-fg: #ffffff;
+  --color-accent: #f59e0b;
+  --color-accent-fg: #1f2937;
+  --color-background: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f1f3f9;
+  --color-input-bg: #ffffff;
+  --color-border: #e3e6ef;
+  --color-text: #111827;
+  --color-muted-text: #6b7280;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-error: #dc2626;
+  --color-info: #0284c7;
+  --color-success-soft: rgb(22 163 74 / 0.14);
+  --color-warning-soft: rgb(217 119 6 / 0.14);
+  --color-error-soft: rgb(220 38 38 / 0.14);
+  --color-info-soft: rgb(2 132 199 / 0.14);
+  --color-sidebar-bg: #0f172a;
+  --color-sidebar-fg: #cbd5e1;
+  --color-sidebar-active-bg: #4f46e5;
+  --color-sidebar-active-fg: #ffffff;
+  --color-navbar-bg: #ffffff;
+  --color-ring: #6366f1;
+  --radius: 12px;
+  --radius-sm: 7px;
+  --radius-lg: 17px;
+  --shadow-card: 0 1px 3px 0 rgb(15 23 42 / 0.08), 0 1px 2px -1px rgb(15 23 42 / 0.06);
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-heading: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-scale: 1;
+  --sidebar-width: 264px;
+  --density-y: 0.65rem;
+  --density-x: 0.9rem;
+
+  /* Chrome that follows the palette rather than the OS. */
+  --nav-height: 3.5rem;
+  --bottom-nav-height: 3.75rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: calc(0.9375rem * var(--font-scale));
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Keep the shell from scrolling sideways on a 320px viewport. */
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 650;
+    letter-spacing: -0.015em;
+    color: var(--color-text);
+  }
+
+  /* Visible keyboard focus everywhere, without a ring on every mouse click. */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  ::selection {
+    background: var(--color-primary-soft);
+    color: var(--color-text);
+  }
+
+  /* Scrollbars follow the surface so a dark tenant does not get white bars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  input, select, textarea, button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Native pickers inherit the palette instead of rendering OS defaults. */
+  input[type='date']::-webkit-calendar-picker-indicator,
+  input[type='time']::-webkit-calendar-picker-indicator {
+    filter: var(--picker-filter, none);
+    cursor: pointer;
+  }
+  .dark input[type='date']::-webkit-calendar-picker-indicator,
+  .dark input[type='time']::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+}
+
+@layer components {
+  .card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+  }
+
+  .surface-alt {
+    background-color: var(--color-surface-alt);
+  }
+
+  /* Dense rows honour the tenant's density setting. */
+  .density-cell {
+    padding-top: var(--density-y);
+    padding-bottom: var(--density-y);
+    padding-left: var(--density-x);
+    padding-right: var(--density-x);
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Safe-area padding for notched phones in standalone PWA mode. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .animate-in-fade {
+    animation: fade-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-in-rise {
+    animation: rise-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* Skeleton shimmer sits on top of the surface token, so it adapts to any theme. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-surface-alt);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-border) 60%, transparent),
+    transparent
+  );
+  animation: shimmer 1.4s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Receipt printing. Applied to the receipt view only, so the rest of the app
+ * is unaffected when a user hits Ctrl+P.
+ */
+@media print {
+  body {
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: #fff;
+    color: #000;
+  }
+  @page {
+    margin: 14mm;
+  }
+}

@@ -104,8 +104,24 @@ export async function syncCatalog({ logger = console } = {}) {
     await client.query('DELETE FROM permissions WHERE key <> ALL($1::text[])', [
       ALL_PERMISSIONS.map((p) => p.key),
     ]);
+
+    // A tenant's owner role is seeded with the catalogue as it stood when the
+    // tenant was created. Without this, a permission added later would leave
+    // existing owners unable to use the new feature - and locked out of the
+    // very screen needed to grant it to themselves.
+    const granted = await client.query(`
+      INSERT INTO role_permissions (role_id, permission_id)
+      SELECT r.id, p.key
+        FROM roles r
+        CROSS JOIN permissions p
+       WHERE r.key = 'owner'
+       ON CONFLICT DO NOTHING
+    `);
     await client.query('COMMIT');
-    logger.log?.(`[migrate] permission catalogue synced (${ALL_PERMISSIONS.length} permissions)`);
+    logger.log?.(
+      `[migrate] permission catalogue synced (${ALL_PERMISSIONS.length} permissions` +
+        `${granted.rowCount ? `, ${granted.rowCount} granted to owner roles` : ''})`,
+    );
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

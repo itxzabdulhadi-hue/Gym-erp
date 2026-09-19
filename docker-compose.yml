@@ -1,0 +1,55 @@
+# Local development stack: Postgres + API. The web app runs on Vite's dev
+# server (npm run dev:web) and proxies /api here.
+#
+#   docker compose up -d db        # database only
+#   docker compose up              # database + api
+#
+# Migrations and seed are run by the api service on boot (see
+# server/Dockerfile CMD). For a throwaway database use the pgdata volume:
+#   docker compose down -v
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-erp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-erp}
+      POSTGRES_DB: ${POSTGRES_DB:-erp_gym}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-erp} -d ${POSTGRES_DB:-erp_gym}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 4000
+      # Inside the compose network the host is the service name, not localhost.
+      DATABASE_URL: postgres://${POSTGRES_USER:-erp}:${POSTGRES_PASSWORD:-erp}@db:5432/${POSTGRES_DB:-erp_gym}
+      DATABASE_SSL: 'false'
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set a 16+ character secret}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set a 16+ character secret}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      UPLOAD_DIR: /data/uploads
+    ports:
+      - "${PORT:-4000}:4000"
+    volumes:
+      - uploads:/data/uploads
+
+volumes:
+  pgdata:
+  uploads:

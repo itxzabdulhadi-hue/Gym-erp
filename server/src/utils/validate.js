@@ -63,6 +63,20 @@ export const optionalText = (max = 2000) =>
 
 export const requiredText = (max = 200) => z.string().trim().min(1, 'Required').max(max);
 
+/**
+ * Text that is rendered into the UI (branding, app name, document title).
+ * Markup is rejected rather than stripped so the operator sees the problem
+ * instead of silently losing part of what they typed.
+ */
+export const plainText = (max = 200, { required = false } = {}) => {
+  // Order matters: `.refine()` wraps the schema in ZodEffects, which no longer
+  // exposes the string methods, so length checks come first.
+  const base = required
+    ? z.string().trim().min(1, 'Required').max(max)
+    : z.string().trim().max(max);
+  return base.refine((v) => !/[<>]/.test(v), 'Cannot contain HTML markup');
+};
+
 export const email = z
   .string()
   .trim()
@@ -118,5 +132,5 @@ export const password = z
   .refine((v) => /[a-zA-Z]/.test(v) && /[0-9]/.test(v), 'Must contain letters and numbers');
 
 export const booleanish = z
-  .union([z.boolean(), z.enum(['true', 'false', '1', '0'])])
-  .transform((v) => (typeof v === 'boolean' ? v : v === 'true' || v === '1'));
+  .union([z.boolean(), z.literal(1), z.literal(0), z.enum(['true', 'false', '1', '0'])])
+  .transform((v) => (typeof v === 'boolean' ? v : v === 1 || v === 'true' || v === '1'));

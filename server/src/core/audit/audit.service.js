@@ -10,8 +10,14 @@ import { param, likePattern, resolveSort } from '../../utils/sql.js';
  * transaction client so the log entry is written atomically with the change.
  */
 export async function logAudit(executor, entry) {
-  // Accepts a transaction client, the pool, or the plain query() helper.
-  const exec = typeof executor === 'function' ? { query: executor } : executor;
+  // Accepts a transaction client, the pool, a plain query function, or nothing
+  // at all - with no executor the ambient client opened by withTenant() is
+  // used, which is the same transaction either way.
+  if (entry === undefined) {
+    entry = executor;
+    executor = null;
+  }
+  const exec = typeof executor === 'function' ? { query: executor } : executor ?? { query };
   const sql = `
     INSERT INTO audit_logs (tenant_id, user_id, user_label, action, entity, entity_id, metadata, ip, user_agent)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)

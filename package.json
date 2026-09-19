@@ -23,7 +23,11 @@
     "start": "npm run start --workspace server",
     "test": "npm run test --workspace server",
     "typecheck": "echo \"JavaScript project - no typecheck step (see npm run lint)\"",
-    "lint": "node scripts/lint.mjs"
+    "lint": "node scripts/lint.mjs",
+    "docs": "npm run docs --workspace server",
+    "smoke": "npm run smoke --workspace server",
+    "check": "npm run check --workspace server",
+    "verify": "npm run lint && npm run check && npm run test && npm run smoke"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",

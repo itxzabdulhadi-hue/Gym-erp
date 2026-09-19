@@ -1,214 +1,136 @@
-import { withTenant, query } from '../../../db/index.js';
+import { withTenant } from '../../../db/index.js';
 import ApiError from '../../../utils/ApiError.js';
 import { paginate, pageMeta, listResponse } from '../../../utils/pagination.js';
-import { param, likePattern, resolveSort } from '../../../utils/sql.js';
 import { memberNumber } from '../../../utils/ids.js';
 import { toCsv, parseCsv } from '../../../utils/csv.js';
 import { logAudit } from '../../../core/audit/audit.service.js';
-import { todayISO, addDays, age, toISODate } from '../../../utils/dates.js';
+import { todayISO, age, toISODate } from '../../../utils/dates.js';
 import { MEMBER_STATUSES } from '@erp/shared';
+import { membersRepository as repo } from './members.repository.js';
 
 /**
- * Members.
+ * Members - business rules.
  *
- * The member row holds identity + lifecycle state. Everything transactional
- * (memberships, payments, attendance, progress) lives in its own table and is
- * read through the member's sub-resources so a profile page never drags the
- * whole history into a list query.
+ * Owns numbering, uniqueness, status validity, the audit trail and the shape of
+ * the API response. SQL lives in `members.repository.js`; HTTP in
+ * `members.controller.js`.
  */
 
-const SORTABLE = {
-  name: 'm.last_name, m.first_name',
-  created_at: 'm.created_at',
-  join_date: 'm.join_date',
-  status: 'm.status',
-  member_no: 'm.member_no',
+const UPDATE_COLUMNS = {
+  firstName: 'first_name', lastName: 'last_name', dob: 'dob', gender: 'gender', phone: 'phone',
+  email: 'email', address: 'address', city: 'city', emergencyContact: 'emergency_contact',
+  emergencyPhone: 'emergency_phone', photoUrl: 'photo_url', joinDate: 'join_date',
+  trainerId: 'trainer_id', status: 'status', bloodGroup: 'blood_group', occupation: 'occupation',
+  notes: 'notes',
 };
 
-const SELECT_LIST = `
-  SELECT m.id, m.member_no, m.first_name, m.last_name, m.dob, m.gender, m.phone, m.email,
-         m.status, m.join_date, m.photo_url, m.trainer_id, m.created_at,
-         concat(m.first_name, ' ', m.last_name) AS full_name,
-         t.first_name || ' ' || t.last_name AS trainer_name,
-         cur.plan_name AS current_plan,
-         cur.end_date AS membership_end_date,
-         cur.status AS membership_status,
-         COALESCE(visits.visits, 0)::int AS visits_30d,
-         COALESCE(visits.total, 0)::int AS total_visits,
-         COALESCE(due.outstanding, 0)::numeric AS outstanding
-  FROM members m
-  LEFT JOIN trainers t ON t.id = m.trainer_id
-  LEFT JOIN LATERAL (
-    SELECT plan_name, end_date, status FROM memberships
-    WHERE member_id = m.id ORDER BY end_date DESC LIMIT 1
-  ) cur ON true
-  LEFT JOIN LATERAL (
-    SELECT count(*) FILTER (WHERE a.visit_date >= CURRENT_DATE - interval '30 days') AS visits,
-           count(*) AS total
-    FROM attendance a
-    WHERE a.member_id = m.id
-  ) visits ON true
-  LEFT JOIN LATERAL (
-    SELECT SUM(amount - amount_paid) AS outstanding FROM payments p
-    WHERE p.member_id = m.id AND p.status IN ('pending', 'partial')
-  ) due ON true
-`;
-
-function buildWhere(tenantId, q) {
-  const params = [];
-  const where = [`m.tenant_id = ${param(params, tenantId)}`];
-
-  if (q.search) {
-    const pattern = likePattern(q.search);
-    where.push(`(m.first_name ILIKE ${param(params, pattern)}
-      OR m.last_name ILIKE ${param(params, pattern)}
-      OR m.member_no ILIKE ${param(params, pattern)}
-      OR m.email ILIKE ${param(params, pattern)}
-      OR m.phone ILIKE ${param(params, pattern)}
-      OR (m.first_name || ' ' || m.last_name) ILIKE ${param(params, pattern)})`);
-  }
-  if (q.status?.length) {
-    const list = Array.isArray(q.status) ? q.status : [q.status];
-    where.push(`m.status IN (${list.map((s) => param(params, s)).join(', ')})`);
-  }
-  if (q.gender) where.push(`m.gender = ${param(params, q.gender)}`);
-  if (q.trainerId) where.push(`m.trainer_id = ${param(params, q.trainerId)}`);
-  if (q.planId) {
-    where.push(`EXISTS (SELECT 1 FROM memberships ms WHERE ms.member_id = m.id AND ms.plan_id = ${param(params, q.planId)} AND ms.status = 'active')`);
-  }
-  if (q.joinedFrom) where.push(`m.join_date >= ${param(params, q.joinedFrom)}`);
-  if (q.joinedTo) where.push(`m.join_date <= ${param(params, q.joinedTo)}`);
-  if (q.expiringWithinDays) {
-    where.push(`EXISTS (SELECT 1 FROM memberships ms WHERE ms.member_id = m.id AND ms.status = 'active'
-      AND ms.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + ${param(params, Number(q.expiringWithinDays))})`);
-  }
-
-  return { where: where.join(' AND '), params };
-}
+const IMPORT_COLUMNS = ['member_no', 'first_name', 'last_name', 'dob', 'gender', 'phone', 'email', 'address', 'join_date', 'status', 'notes'];
 
 export async function listMembers(tenantId, q = {}) {
   const { page, limit, offset } = paginate(q);
-  const { where, params } = buildWhere(tenantId, q);
-  const orderSql = resolveSort(q.sort, q.order, SORTABLE, 'm.created_at DESC');
-
-  return withTenant(tenantId, async (client) => {
-    const countParams = [...params];
-    const [rows, count] = await Promise.all([
-      client.query(`${SELECT_LIST} WHERE ${where} ORDER BY ${orderSql} LIMIT ${param(params, limit)} OFFSET ${param(params, offset)}`, params),
-      client.query(`SELECT count(*)::int AS total FROM members m WHERE ${where}`, countParams),
-    ]);
-    return listResponse(rows.rows.map(shapeMember), pageMeta({ page, limit }, count.rows[0].total));
-  });
+  const { rows, total } = await withTenant(tenantId, () => repo.list(tenantId, q, { limit, offset }));
+  return listResponse(rows.map(shapeMember), pageMeta({ page, limit }, total));
 }
 
 export async function getMember(tenantId, memberId) {
-  return withTenant(tenantId, async (client) => {
-    const res = await client.query(
-      `SELECT m.*, concat(m.first_name, ' ', m.last_name) AS full_name,
-              t.first_name || ' ' || t.last_name AS trainer_name, t.id AS trainer_id2,
-              cur.plan_name AS current_plan, cur.end_date AS membership_end_date,
-              cur.status AS membership_status, cur.plan_id AS current_plan_id, cur.id AS current_membership_id,
-              (SELECT count(*)::int FROM attendance a WHERE a.member_id = m.id) AS total_visits,
-              (SELECT count(*)::int FROM attendance a WHERE a.member_id = m.id AND a.visit_date >= CURRENT_DATE - interval '30 days') AS visits_30d,
-              (SELECT COALESCE(SUM(amount_paid), 0)::numeric FROM payments p WHERE p.member_id = m.id AND p.status IN ('paid','partial')) AS total_paid,
-              (SELECT COALESCE(SUM(amount - amount_paid), 0)::numeric FROM payments p WHERE p.member_id = m.id AND p.status IN ('pending','partial')) AS outstanding,
-              (SELECT recorded_at FROM progress_records pr WHERE pr.member_id = m.id ORDER BY recorded_at DESC LIMIT 1) AS last_progress_at
-       FROM members m
-       LEFT JOIN trainers t ON t.id = m.trainer_id
-       LEFT JOIN LATERAL (
-         SELECT id, plan_id, plan_name, end_date, status FROM memberships
-         WHERE member_id = m.id ORDER BY end_date DESC LIMIT 1
-       ) cur ON true
-       WHERE m.tenant_id = $1 AND m.id = $2`,
-      [tenantId, memberId],
-    );
-    const row = res.rows[0];
-    if (!row) throw ApiError.notFound('Member not found');
-    return { ...shapeMember(row), notes: row.notes, address: row.address, city: row.city, emergencyContact: row.emergency_contact, emergencyPhone: row.emergency_phone, bloodGroup: row.blood_group, occupation: row.occupation, customFields: row.custom_fields || {}, totalPaid: Number(row.total_paid), outstanding: Number(row.outstanding), lastProgressAt: row.last_progress_at };
-  });
+  const row = await withTenant(tenantId, () => repo.findById(tenantId, memberId));
+  if (!row) throw ApiError.notFound('Member not found');
+  return {
+    ...shapeMember(row),
+    notes: row.notes,
+    address: row.address,
+    city: row.city,
+    emergencyContact: row.emergency_contact,
+    emergencyPhone: row.emergency_phone,
+    bloodGroup: row.blood_group,
+    occupation: row.occupation,
+    customFields: row.custom_fields || {},
+    totalPaid: Number(row.total_paid),
+    outstanding: Number(row.outstanding),
+    lastProgressAt: row.last_progress_at,
+  };
 }
 
 export async function createMember(tenantId, input, actor) {
-  return withTenant(tenantId, async (client) => {
-    const memberNo = input.memberNo || (await nextMemberNumber(client, tenantId));
-    const clash = await client.query('SELECT id FROM members WHERE tenant_id = $1 AND member_no = $2', [tenantId, memberNo]);
-    if (clash.rowCount) throw ApiError.conflict(`Member number ${memberNo} is already used`);
-
-    if (input.email) {
-      const dup = await client.query('SELECT id FROM members WHERE tenant_id = $1 AND lower(email) = lower($2)', [tenantId, input.email]);
-      if (dup.rowCount) throw ApiError.conflict('A member with that email already exists');
+  return withTenant(tenantId, async () => {
+    const memberNo = input.memberNo || (await nextMemberNumber(tenantId));
+    if (await repo.existsByMemberNo(tenantId, memberNo)) {
+      throw ApiError.conflict(`Member number ${memberNo} is already used`);
     }
-    if (input.trainerId) await assertTrainer(client, tenantId, input.trainerId);
+    if (input.email && (await repo.existsByEmail(tenantId, input.email))) {
+      throw ApiError.conflict('A member with that email already exists');
+    }
+    if (input.trainerId) await assertTrainer(tenantId, input.trainerId);
 
-    const inserted = await client.query(
-      `INSERT INTO members (tenant_id, member_no, first_name, last_name, dob, gender, phone, email, address, city,
-                            emergency_contact, emergency_phone, photo_url, join_date, trainer_id, status, blood_group, occupation, notes, custom_fields, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
-      [
-        tenantId, memberNo, input.firstName, input.lastName, input.dob ?? null, input.gender ?? null,
-        input.phone ?? null, input.email ?? null, input.address ?? null, input.city ?? null,
-        input.emergencyContact ?? null, input.emergencyPhone ?? null, input.photoUrl ?? null,
-        input.joinDate || todayISO(), input.trainerId ?? null, input.status || 'active',
-        input.bloodGroup ?? null, input.occupation ?? null, input.notes ?? null,
-        JSON.stringify(input.customFields || {}), actor?.userId ?? null,
-      ],
-    );
+    const values = {
+      memberNo,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      dob: input.dob ?? null,
+      gender: input.gender ?? null,
+      phone: input.phone ?? null,
+      email: input.email ?? null,
+      address: input.address ?? null,
+      city: input.city ?? null,
+      emergencyContact: input.emergencyContact ?? null,
+      emergencyPhone: input.emergencyPhone ?? null,
+      photoUrl: input.photoUrl ?? null,
+      joinDate: input.joinDate || todayISO(),
+      trainerId: input.trainerId ?? null,
+      status: input.status || 'active',
+      bloodGroup: input.bloodGroup ?? null,
+      occupation: input.occupation ?? null,
+      notes: input.notes ?? null,
+      customFields: input.customFields || {},
+    };
 
-    await logAudit(client, {
+    const inserted = await repo.insert(tenantId, values, actor?.userId);
+
+    await logAudit(null, {
       tenantId,
       userId: actor?.userId,
       userLabel: actor?.userLabel,
       action: 'member.created',
       entity: 'member',
-      entityId: inserted.rows[0].id,
+      entityId: inserted.id,
       metadata: { memberNo, name: `${input.firstName} ${input.lastName}` },
     });
 
-    return shapeMember({ ...inserted.rows[0], full_name: `${input.firstName} ${input.lastName}` });
+    return shapeMember({ ...inserted, full_name: `${input.firstName} ${input.lastName}` });
   });
 }
 
 export async function updateMember(tenantId, memberId, input, actor) {
-  return withTenant(tenantId, async (client) => {
-    const current = await client.query('SELECT * FROM members WHERE tenant_id = $1 AND id = $2', [tenantId, memberId]);
-    const before = current.rows[0];
+  return withTenant(tenantId, async () => {
+    const before = await repo.findRawById(tenantId, memberId);
     if (!before) throw ApiError.notFound('Member not found');
-    if (input.trainerId) await assertTrainer(client, tenantId, input.trainerId);
+    if (input.trainerId) await assertTrainer(tenantId, input.trainerId);
 
-    const columns = {
-      firstName: 'first_name', lastName: 'last_name', dob: 'dob', gender: 'gender', phone: 'phone',
-      email: 'email', address: 'address', city: 'city', emergencyContact: 'emergency_contact',
-      emergencyPhone: 'emergency_phone', photoUrl: 'photo_url', joinDate: 'join_date',
-      trainerId: 'trainer_id', status: 'status', bloodGroup: 'blood_group', occupation: 'occupation', notes: 'notes',
-    };
-
+    // The repository prepends $1 = tenant_id and $2 = id, so value
+    // placeholders start at $3.
     const sets = [];
-    const params = [tenantId, memberId];
-    for (const [key, column] of Object.entries(columns)) {
+    const params = [];
+    for (const [key, column] of Object.entries(UPDATE_COLUMNS)) {
       if (input[key] === undefined) continue;
       params.push(input[key] === '' ? null : input[key]);
-      sets.push(`${column} = $${params.length}`);
+      sets.push(`${column} = $${params.length + 2}`);
     }
     if (input.customFields !== undefined) {
       params.push(JSON.stringify(input.customFields));
-      sets.push(`custom_fields = $${params.length}::jsonb`);
+      sets.push(`custom_fields = $${params.length + 2}::jsonb`);
     }
     if (!sets.length) throw ApiError.badRequest('Nothing to update');
 
-    const res = await client.query(
-      `UPDATE members SET ${sets.join(', ')} WHERE tenant_id = $1 AND id = $2 RETURNING *`,
-      params,
-    );
+    const after = await repo.update(tenantId, memberId, sets, params);
 
-    const after = res.rows[0];
     const changes = {};
-    for (const [key, column] of Object.entries(columns)) {
+    for (const [key, column] of Object.entries(UPDATE_COLUMNS)) {
       if (input[key] !== undefined && String(before[column] ?? '') !== String(after[column] ?? '')) {
         changes[key] = { from: before[column], to: after[column] };
       }
     }
 
-    await logAudit(client, {
+    await logAudit(null, {
       tenantId,
       userId: actor?.userId,
       userLabel: actor?.userLabel,
@@ -223,19 +145,19 @@ export async function updateMember(tenantId, memberId, input, actor) {
 }
 
 export async function deleteMember(tenantId, memberId, actor) {
-  return withTenant(tenantId, async (client) => {
-    const current = await client.query('SELECT member_no, first_name, last_name FROM members WHERE tenant_id = $1 AND id = $2', [tenantId, memberId]);
-    if (!current.rows[0]) throw ApiError.notFound('Member not found');
+  return withTenant(tenantId, async () => {
+    const current = await repo.findSummaryById(tenantId, memberId);
+    if (!current) throw ApiError.notFound('Member not found');
 
-    await client.query('DELETE FROM members WHERE tenant_id = $1 AND id = $2', [tenantId, memberId]);
-    await logAudit(client, {
+    await repo.remove(tenantId, memberId);
+    await logAudit(null, {
       tenantId,
       userId: actor?.userId,
       userLabel: actor?.userLabel,
       action: 'member.deleted',
       entity: 'member',
       entityId: memberId,
-      metadata: { memberNo: current.rows[0].member_no, name: `${current.rows[0].first_name} ${current.rows[0].last_name}` },
+      metadata: { memberNo: current.member_no, name: `${current.first_name} ${current.last_name}` },
     });
     return { ok: true };
   });
@@ -246,22 +168,18 @@ export async function bulkUpdateStatus(tenantId, memberIds, status, actor) {
   if (!MEMBER_STATUSES.includes(status)) throw ApiError.badRequest('Unknown member status');
   if (!memberIds.length) throw ApiError.badRequest('No members selected');
 
-  return withTenant(tenantId, async (client) => {
-    const placeholders = memberIds.map((_, i) => `$${i + 3}`).join(', ');
-    const res = await client.query(
-      `UPDATE members SET status = $2 WHERE tenant_id = $1 AND id IN (${placeholders}) RETURNING id`,
-      [tenantId, status, ...memberIds],
-    );
-    await logAudit(client, {
+  return withTenant(tenantId, async () => {
+    const updated = await repo.bulkStatus(tenantId, memberIds, status);
+    await logAudit(null, {
       tenantId,
       userId: actor?.userId,
       userLabel: actor?.userLabel,
       action: 'member.bulk_status',
       entity: 'member',
       entityId: tenantId,
-      metadata: { status, count: res.rowCount },
+      metadata: { status, count: updated },
     });
-    return { updated: res.rowCount };
+    return { updated };
   });
 }
 
@@ -269,103 +187,40 @@ export async function bulkUpdateStatus(tenantId, memberIds, status, actor) {
 // Sub-resources used by the profile page
 // ---------------------------------------------------------------------------
 
-export async function memberMemberships(tenantId, memberId) {
-  const res = await withTenant(tenantId, (client) =>
-    client.query(
-      `SELECT ms.*, mp.name AS plan_current_name
-       FROM memberships ms LEFT JOIN membership_plans mp ON mp.id = ms.plan_id
-       WHERE ms.tenant_id = $1 AND ms.member_id = $2 ORDER BY ms.start_date DESC`,
-      [tenantId, memberId],
-    ),
-  );
-  return res.rows;
-}
+export const memberMemberships = (tenantId, memberId) =>
+  withTenant(tenantId, () => repo.memberships(tenantId, memberId));
 
-export async function memberPayments(tenantId, memberId, limit = 50) {
-  const res = await withTenant(tenantId, (client) =>
-    client.query(
-      `SELECT * FROM payments WHERE tenant_id = $1 AND member_id = $2 ORDER BY paid_at DESC, created_at DESC LIMIT $3`,
-      [tenantId, memberId, Math.min(Number(limit) || 50, 500)],
-    ),
-  );
-  return res.rows;
-}
+export const memberPayments = (tenantId, memberId, limit = 50) =>
+  withTenant(tenantId, () => repo.payments(tenantId, memberId, limit));
 
-export async function memberAttendance(tenantId, memberId, { limit = 50, from, to } = {}) {
-  const params = [tenantId, memberId];
-  let sql = 'SELECT * FROM attendance WHERE tenant_id = $1 AND member_id = $2';
-  if (from) {
-    params.push(from);
-    sql += ` AND visit_date >= $${params.length}`;
-  }
-  if (to) {
-    params.push(to);
-    sql += ` AND visit_date <= $${params.length}`;
-  }
-  params.push(Math.min(Number(limit) || 50, 500));
-  sql += ` ORDER BY check_in_at DESC LIMIT $${params.length}`;
-  const res = await withTenant(tenantId, (client) => client.query(sql, params));
-  return res.rows;
-}
+export const memberAttendance = (tenantId, memberId, opts = {}) =>
+  withTenant(tenantId, () => repo.attendance(tenantId, memberId, opts));
 
-export async function memberProgress(tenantId, memberId) {
-  const res = await withTenant(tenantId, (client) =>
-    client.query('SELECT * FROM progress_records WHERE tenant_id = $1 AND member_id = $2 ORDER BY recorded_at ASC', [tenantId, memberId]),
-  );
-  return res.rows;
-}
+export const memberProgress = (tenantId, memberId) =>
+  withTenant(tenantId, () => repo.progress(tenantId, memberId));
 
-export async function memberWorkouts(tenantId, memberId) {
-  const res = await withTenant(tenantId, (client) =>
-    client.query(
-      `SELECT wa.*, wp.name AS plan_name, wp.level, wp.goal,
-              concat(t.first_name, ' ', t.last_name) AS trainer_name
-       FROM workout_assignments wa
-       JOIN workout_plans wp ON wp.id = wa.plan_id
-       LEFT JOIN trainers t ON t.id = wa.trainer_id
-       WHERE wa.tenant_id = $1 AND wa.member_id = $2
-       ORDER BY wa.assigned_at DESC`,
-      [tenantId, memberId],
-    ),
-  );
-  return res.rows;
-}
+export const memberWorkouts = (tenantId, memberId) =>
+  withTenant(tenantId, () => repo.workouts(tenantId, memberId));
 
-export async function memberDocuments(tenantId, memberId) {
-  const res = await withTenant(tenantId, (client) =>
-    client.query(
-      `SELECT md.id, md.label, md.created_at, f.id AS file_id, f.filename, f.url, f.mime_type, f.byte_size
-       FROM member_documents md JOIN files f ON f.id = md.file_id
-       WHERE md.tenant_id = $1 AND md.member_id = $2 ORDER BY md.created_at DESC`,
-      [tenantId, memberId],
-    ),
-  );
-  return res.rows;
-}
+export const memberDocuments = (tenantId, memberId) =>
+  withTenant(tenantId, () => repo.documents(tenantId, memberId));
 
 export async function attachDocument(tenantId, memberId, { fileId, label }, actor) {
-  const res = await withTenant(tenantId, async (client) => {
-    const file = await client.query('SELECT id FROM files WHERE tenant_id = $1 AND id = $2', [tenantId, fileId]);
-    if (!file.rows[0]) throw ApiError.notFound('File not found');
-    const inserted = await client.query(
-      'INSERT INTO member_documents (tenant_id, member_id, file_id, label) VALUES ($1,$2,$3,$4) RETURNING *',
-      [tenantId, memberId, fileId, label || 'Document'],
-    );
-    await logAudit(client, {
+  return withTenant(tenantId, async () => {
+    if (!(await repo.findFile(tenantId, fileId))) throw ApiError.notFound('File not found');
+    const inserted = await repo.insertDocument(tenantId, memberId, fileId, label || 'Document');
+    await logAudit(null, {
       tenantId, userId: actor?.userId, userLabel: actor?.userLabel,
       action: 'member.document_added', entity: 'member', entityId: memberId,
       metadata: { label: label || 'Document' },
     });
-    return inserted.rows[0];
+    return inserted;
   });
-  return res;
 }
 
 // ---------------------------------------------------------------------------
 // Import / export
 // ---------------------------------------------------------------------------
-
-const IMPORT_COLUMNS = ['member_no', 'first_name', 'last_name', 'dob', 'gender', 'phone', 'email', 'address', 'join_date', 'status', 'notes'];
 
 export function importTemplateCsv() {
   return toCsv(
@@ -423,21 +278,15 @@ export async function importMembers(tenantId, csvText, actor) {
 
   if (errors.length) return { imported: 0, failed: errors.length, errors: errors.slice(0, 50) };
 
-  const result = await withTenant(tenantId, async (client) => {
+  const result = await withTenant(tenantId, async () => {
     let imported = 0;
-    let sequence = await nextSequence(client, tenantId);
+    let sequence = (await repo.count(tenantId)) + 1;
     for (const row of prepared) {
       const memberNo = row.memberNo || memberNumber(sequence);
       sequence += 1;
-      const inserted = await client.query(
-        `INSERT INTO members (tenant_id, member_no, first_name, last_name, dob, gender, phone, email, address, join_date, status, notes, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         ON CONFLICT (tenant_id, member_no) DO NOTHING RETURNING id`,
-        [tenantId, memberNo, row.firstName, row.lastName, row.dob, row.gender, row.phone, row.email, row.address, row.joinDate, row.status, row.notes, actor?.userId ?? null],
-      );
-      if (inserted.rowCount) imported += 1;
+      if (await repo.insertImported(tenantId, { ...row, memberNo }, actor?.userId)) imported += 1;
     }
-    await logAudit(client, {
+    await logAudit(null, {
       tenantId, userId: actor?.userId, userLabel: actor?.userLabel,
       action: 'member.imported', entity: 'member', entityId: tenantId,
       metadata: { imported, attempted: prepared.length },
@@ -449,20 +298,9 @@ export async function importMembers(tenantId, csvText, actor) {
 }
 
 export async function exportMembersCsv(tenantId, q = {}) {
-  const { where, params } = buildWhere(tenantId, q);
-  params.push(10_000);
-  const res = await withTenant(tenantId, (client) =>
-    client.query(
-      `SELECT m.member_no, m.first_name, m.last_name, m.dob, m.gender, m.phone, m.email, m.address, m.city,
-              m.join_date, m.status, m.emergency_contact, m.emergency_phone, m.notes,
-              t.first_name || ' ' || t.last_name AS trainer
-       FROM members m LEFT JOIN trainers t ON t.id = m.trainer_id
-       WHERE ${where} ORDER BY m.created_at DESC LIMIT $${params.length}`,
-      params,
-    ),
-  );
+  const rows = await withTenant(tenantId, () => repo.exportRows(tenantId, q));
 
-  return toCsv(res.rows, [
+  return toCsv(rows, [
     { key: 'member_no', header: 'Member No' },
     { key: 'first_name', header: 'First Name' },
     { key: 'last_name', header: 'Last Name' },
@@ -485,25 +323,20 @@ export async function exportMembersCsv(tenantId, q = {}) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function nextSequence(client, tenantId) {
-  const res = await client.query('SELECT count(*)::int AS c FROM members WHERE tenant_id = $1', [tenantId]);
-  return res.rows[0].c + 1;
-}
-
-export async function nextMemberNumber(client, tenantId) {
+export async function nextMemberNumber(tenantId) {
   // Retry on collision so two concurrent "new member" requests cannot both win.
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const sequence = await nextSequence(client, tenantId);
-    const candidate = memberNumber(sequence + attempt);
-    const clash = await client.query('SELECT 1 FROM members WHERE tenant_id = $1 AND member_no = $2', [tenantId, candidate]);
-    if (!clash.rowCount) return candidate;
+    const sequence = await repo.count(tenantId);
+    const candidate = memberNumber(sequence + attempt + 1);
+    if (!(await repo.existsByMemberNo(tenantId, candidate))) return candidate;
   }
   return memberNumber(Date.now() % 1_000_000);
 }
 
-async function assertTrainer(client, tenantId, trainerId) {
-  const res = await client.query('SELECT id FROM trainers WHERE tenant_id = $1 AND id = $2', [tenantId, trainerId]);
-  if (!res.rows[0]) throw ApiError.badRequest('That trainer does not belong to this business');
+async function assertTrainer(tenantId, trainerId) {
+  if (!(await repo.findTrainer(tenantId, trainerId))) {
+    throw ApiError.badRequest('That trainer does not belong to this business');
+  }
 }
 
 function shapeMember(row) {
@@ -541,5 +374,3 @@ function shapeMember(row) {
 function daysUntil(date) {
   return Math.round((new Date(`${toISODate(date)}T00:00:00Z`) - new Date(`${todayISO()}T00:00:00Z`)) / 86_400_000);
 }
-
-export { addDays };

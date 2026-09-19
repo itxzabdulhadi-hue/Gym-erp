@@ -120,7 +120,10 @@ export async function createPayment(tenantId, input, actor) {
     if (discount > amount) throw ApiError.badRequest('Discount cannot be greater than the amount');
 
     const requestedPaid = input.amountPaid !== undefined ? roundMoney(input.amountPaid) : amount - discount;
-    const amountPaid = Math.max(0, Math.min(requestedPaid, amount));
+    // Clamping an overpayment silently would hide a data-entry mistake from the
+    // person at the desk, so refuse it instead.
+    if (requestedPaid > amount) throw ApiError.badRequest('Amount paid cannot be greater than the amount due');
+    const amountPaid = Math.max(0, requestedPaid);
     const status = resolveStatus(amountPaid, amount);
 
     const settings = await client.query('SELECT settings FROM tenants WHERE id = $1', [tenantId]);

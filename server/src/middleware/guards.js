@@ -6,12 +6,19 @@ import ApiError from '../utils/ApiError.js';
  * nothing hardcodes "if user is owner" logic.
  */
 
-export const requirePermission = (...keys) => (req, _res, next) => {
-  if (!req.ctx) return next(ApiError.unauthorized());
-  if (!hasPermission(req.ctx.permissions, keys[0]) && !hasAny(req.ctx.permissions, keys)) {
-    return next(ApiError.forbidden(`Missing permission: ${keys.join(' or ')}`));
-  }
-  return next();
+export const requirePermission = (...keys) => {
+  const guard = (req, _res, next) => {
+    if (!req.ctx) return next(ApiError.unauthorized());
+    if (!hasPermission(req.ctx.permissions, keys[0]) && !hasAny(req.ctx.permissions, keys)) {
+      return next(ApiError.forbidden(`Missing permission: ${keys.join(' or ')}`));
+    }
+    return next();
+  };
+  // Introspectable: the API reference generator and the route tests read these
+  // instead of parsing source text.
+  guard.permissions = keys;
+  guard.guardName = 'requirePermission';
+  return guard;
 };
 
 export const requireAll = (...keys) => (req, _res, next) => {
@@ -31,11 +38,17 @@ function hasAny(permissions, keys) {
  * answers 403 MODULE_DISABLED, so deep links and scripted calls cannot bypass
  * the setting.
  */
-export const requireModule = (moduleKey) => (req, _res, next) => {
-  if (!req.ctx) return next(ApiError.unauthorized());
-  const entry = req.ctx.modules[moduleKey];
-  if (entry && entry.enabled === false) return next(ApiError.moduleDisabled(moduleKey));
-  return next();
+export const requireModule = (moduleKey) => {
+  const guard = (req, _res, next) => {
+    if (!req.ctx) return next(ApiError.unauthorized());
+    const entry = req.ctx.modules[moduleKey];
+    if (entry && entry.enabled === false) return next(ApiError.moduleDisabled(moduleKey));
+    return next();
+  };
+  // Introspectable: the API reference generator reads this.
+  guard.module = moduleKey;
+  guard.guardName = 'requireModule';
+  return guard;
 };
 
 /** Convenience: module enabled AND the caller may use it. */

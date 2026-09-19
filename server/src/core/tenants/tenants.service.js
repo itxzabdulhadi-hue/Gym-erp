@@ -4,6 +4,8 @@ import { tx, withTenant, query } from '../../db/index.js';
 import ApiError from '../../utils/ApiError.js';
 import { slugify } from '../../utils/ids.js';
 import logger from '../../utils/logger.js';
+import { shapeBranding } from '../branding/branding.shape.js';
+import { shapeTheme } from '../themes/theme.shape.js';
 
 export const BCRYPT_ROUNDS = 11;
 
@@ -76,7 +78,10 @@ export async function listTenants({ search, status } = {}) {
 
 export async function getBranding(tenantId) {
   const res = await query('SELECT * FROM branding WHERE tenant_id = $1', [tenantId]);
-  return res.rows[0] || null;
+  // Shape it: /api/auth/me spreads the workspace into its response, and the
+  // rest of the API answers camelCase. Returning the raw row here made that
+  // one endpoint leak snake_case column names to the client.
+  return shapeBranding(res.rows[0] || null);
 }
 
 // ---------------------------------------------------------------------------
@@ -235,10 +240,18 @@ export async function updateTenant(tenantId, patch) {
 /** Deep-merge one settings namespace (general, payments, security, ...). */
 export async function updateTenantSettings(tenantId, namespace, patch) {
   if (!DEFAULT_TENANT_SETTINGS[namespace]) throw ApiError.badRequest(`Unknown settings section "${namespace}"`);
+  // `$2` cannot be reused for both the jsonb path (text[]) and the key lookup
+  // (text): PostgreSQL fails with "inconsistent types deduced for parameter".
   const res = await query(
-    `UPDATE tenants SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), $2, COALESCE(settings-> $2, '{}'::jsonb) || $3::jsonb)
-     WHERE id = $1 RETURNING settings`,
-    [tenantId, `{${namespace}}`, JSON.stringify(patch)],
+    `UPDATE tenants
+        SET settings = jsonb_set(
+              COALESCE(settings, '{}'::jsonb),
+              $2::text[],
+              COALESCE(settings -> $3::text, '{}'::jsonb) || $4::jsonb
+            )
+      WHERE id = $1
+      RETURNING settings`,
+    [tenantId, `{${namespace}}`, namespace, JSON.stringify(patch)],
   );
   return res.rows[0]?.settings || {};
 }
@@ -270,7 +283,7 @@ export async function getTenantWorkspace(tenantId) {
   return {
     modules: modules.rows,
     branding,
-    theme: theme.rows[0] || null,
+    theme: shapeTheme(theme.rows[0] || null),
     counts: { membershipPlans: plans.rows[0]?.total ?? 0 },
   };
 }

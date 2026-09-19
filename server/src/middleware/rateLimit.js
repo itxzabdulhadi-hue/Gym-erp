@@ -5,6 +5,10 @@ import { ERROR_CODES } from '@erp/shared';
 const base = {
   standardHeaders: true,
   legacyHeaders: false,
+  // The integration suite drives this app in-process and makes several hundred
+  // requests on purpose; throttling it produces red tests that mean nothing.
+  // Real clients in every other environment are limited exactly as configured.
+  skip: () => config.isTest,
   // Behind a proxy (Vercel) the real client IP arrives in x-forwarded-for.
   keyGenerator: (req) => req.ip || req.socket?.remoteAddress || 'unknown',
   handler: (_req, res) =>

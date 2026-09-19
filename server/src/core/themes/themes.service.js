@@ -13,21 +13,7 @@ import { invalidateAuthCache } from '../auth/authContext.js';
  * baked into the bundle.
  */
 
-function shape(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    config: row.config,
-    customCss: row.custom_css || '',
-    isActive: Boolean(row.is_active),
-    isPreset: Boolean(row.is_preset),
-    createdBy: row.created_by,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
+import { shapeTheme as shape } from './theme.shape.js';
 
 export async function listThemes(tenantId) {
   const res = await query(

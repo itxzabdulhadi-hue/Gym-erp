@@ -33,7 +33,7 @@ router.get('/presets', requireAuth, (_req, res) => {
   res.json({ data: THEME_PRESETS.map((p) => ({ name: p.name, description: p.description, config: p.config })) });
 });
 
-router.get('/', requireAuth, requirePermission('theme.manage'), asyncHandler(async (req, res) => {
+router.get('/', requireAuth, requirePermission('theme.view'), asyncHandler(async (req, res) => {
   res.json({ data: await themes.listThemes(req.tenantId) });
 }));
 
@@ -49,11 +49,11 @@ router.post('/import', requireAuth, requirePermission('theme.manage'), asyncHand
   res.status(201).json({ data: await themes.importTheme(req.tenantId, req.body, actorOf(req)) });
 }));
 
-router.get('/:id', requireAuth, requirePermission('theme.manage'), validateParams(idParam), asyncHandler(async (req, res) => {
+router.get('/:id', requireAuth, requirePermission('theme.view'), validateParams(idParam), asyncHandler(async (req, res) => {
   res.json({ data: await themes.getTheme(req.tenantId, req.validatedParams.id) });
 }));
 
-router.get('/:id/export', requireAuth, requirePermission('theme.manage'), validateParams(idParam), asyncHandler(async (req, res) => {
+router.get('/:id/export', requireAuth, requirePermission('theme.view'), validateParams(idParam), asyncHandler(async (req, res) => {
   res.json(await themes.exportTheme(req.tenantId, req.validatedParams.id));
 }));
 

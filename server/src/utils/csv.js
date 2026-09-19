@@ -19,8 +19,22 @@ export function toCsv(rows, columns) {
 
 function escapeCell(value) {
   if (value === null || value === undefined) return '';
-  const str = value instanceof Date ? value.toISOString() : String(value);
+  const str = neutraliseFormula(value instanceof Date ? value.toISOString() : String(value));
   return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+/**
+ * Spreadsheet formula injection: a cell beginning with `=`, `+`, `@`, a tab or
+ * a carriage return is executed by Excel/Sheets when the export is opened, and
+ * `-` too unless it is just a negative number. Member data is user supplied, so
+ * every exported cell is defused here.
+ */
+function neutraliseFormula(str) {
+  if (!str) return str;
+  const first = str[0];
+  if (first === '=' || first === '+' || first === '@' || first === '\t' || first === '\r') return `'${str}`;
+  if (first === '-' && !/^-\d/.test(str)) return `'${str}`;
+  return str;
 }
 
 /**

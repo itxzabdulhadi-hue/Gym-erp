@@ -66,7 +66,9 @@ export async function requireAuth(req, _res, next) {
 
   try {
     const ctx = await loadAuthContext({ userId: payload.sub, tenantId: payload.tid });
-    if (!ctx.user) return next(ApiError.unauthorized('Account no longer exists'));
+    // A signed token whose user or tenant has since been deleted yields no
+    // context at all; that is an auth failure, not a server error.
+    if (!ctx?.user) return next(ApiError.unauthorized('Account no longer exists'));
     if (ctx.user.status !== 'active') return next(ApiError.forbidden('This account is disabled'));
     if (ctx.tenant.status === 'suspended') return next(ApiError.forbidden('This business account is suspended'));
 

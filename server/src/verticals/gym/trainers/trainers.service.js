@@ -101,6 +101,14 @@ export async function trainerPlans(tenantId, trainerId) {
 /** Commission basis: revenue from members assigned to this trainer. */
 export async function trainerPerformance(tenantId, trainerId, { days = 30 } = {}) {
   return withTenant(tenantId, async (client) => {
+    // Confirm ownership first: without this a foreign trainer id returned a
+    // zeroed-out report with HTTP 200 instead of 404.
+    const trainer = await client.query(
+      'SELECT id, commission_rate FROM trainers WHERE tenant_id = $1 AND id = $2',
+      [tenantId, trainerId],
+    );
+    if (!trainer.rows[0]) throw ApiError.notFound('Trainer not found');
+
     const res = await client.query(
       `SELECT count(DISTINCT m.id)::int AS members,
               COALESCE(SUM(p.amount_paid), 0)::numeric AS revenue,
@@ -111,9 +119,8 @@ export async function trainerPerformance(tenantId, trainerId, { days = 30 } = {}
        WHERE m.tenant_id = $1 AND m.trainer_id = $2`,
       [tenantId, trainerId, String(days)],
     );
-    const trainer = await client.query('SELECT commission_rate FROM trainers WHERE tenant_id = $1 AND id = $2', [tenantId, trainerId]);
     const revenue = Number(res.rows[0].revenue || 0);
-    const rate = Number(trainer.rows[0]?.commission_rate || 0);
+    const rate = Number(trainer.rows[0].commission_rate || 0);
     return {
       days: Number(days),
       members: res.rows[0].members,

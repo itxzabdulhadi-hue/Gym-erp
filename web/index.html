@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="description" content="Business management platform" />
+
+    <!--
+      Everything tenant specific - title, icons, manifest, theme colour - is
+      replaced at runtime from the tenant's branding, so this file stays
+      generic. No customer identity is hardcoded here.
+    -->
+    <title>Loading…</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!--
+      Placeholder only. Both of these are replaced at runtime by the tenant's own
+      favicon and app icon (see lib/themeEngine.js), so nothing customer specific
+      is baked into the bundle. PNG install icons are generated per tenant there
+      as well; a standalone PNG is not shipped because it would be a default
+      brand mark rather than the customer's.
+    -->
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Applied before first paint so a returning tenant does not see a flash
+         of the default palette. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('erp.theme.css');
+          if (stored) {
+            var vars = JSON.parse(stored);
+            var root = document.documentElement;
+            for (var key in vars) root.style.setProperty(key, vars[key]);
+          }
+          var mode = localStorage.getItem('erp.theme.mode');
+          var dark =
+            mode === 'dark' ||
+            ((mode === 'system' || !mode) &&
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          root.classList.toggle('dark', !!dark);
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          var color = localStorage.getItem('erp.theme.color');
+          if (color) {
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', color);
+          }
+        } catch (err) {
+          /* a corrupt cache must never stop the app from booting */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

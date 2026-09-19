@@ -79,6 +79,12 @@ export async function queryOne(text, params = []) {
   return res.rows[0] || null;
 }
 
+/** Same as `query()`, but returns just the rows. */
+export async function queryMany(text, params = []) {
+  const res = await query(text, params);
+  return res.rows;
+}
+
 /**
  * Run `fn` inside a transaction. If a transaction is already open on this async
  * context, it is reused so the caller stays atomic.

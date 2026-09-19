@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "maintenance": "node scripts/maintenance.js",
     "check": "node scripts/check-imports.mjs",
-    "smoke": "node scripts/smoke.js"
+    "smoke": "node scripts/smoke.js",
+    "docs": "node scripts/api-docs.mjs"
   },
   "dependencies": {
     "@erp/shared": "*",

@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { query, tx } from '../../db/index.js';
+import { query, queryOne, tx } from '../../db/index.js';
 import ApiError from '../../utils/ApiError.js';
 import { randomToken, sha256 } from '../../utils/ids.js';
 import config from '../../config/env.js';
@@ -135,17 +135,33 @@ export async function refresh({ refreshToken, ip, userAgent }) {
 }
 
 export async function logout({ refreshToken, userId, tenantId }) {
+  let actorId = userId;
+  let actorTenant = tenantId;
+
   if (refreshToken) {
     try {
       const payload = verifyRefreshToken(refreshToken);
       await query('UPDATE refresh_tokens SET revoked_at = now() WHERE token_hash = $1', [sha256(payload.jti || '')]);
+      // The endpoint is unauthenticated (you must be able to log out with an
+      // expired access token), so the actor comes from the refresh token.
+      actorId ||= payload.sub;
+      actorTenant ||= payload.tid;
     } catch {
       // An already invalid token still counts as logged out.
     }
   }
-  if (userId) {
-    invalidateAuthCache({ userId });
-    await logAudit(query, { tenantId, userId, action: 'auth.logout', entity: 'user', entityId: userId });
+
+  if (actorId) {
+    invalidateAuthCache({ userId: actorId });
+    const who = await queryOne('SELECT full_name FROM users WHERE id = $1', [actorId]);
+    await logAudit(query, {
+      tenantId: actorTenant,
+      userId: actorId,
+      userLabel: who?.full_name ?? null,
+      action: 'auth.logout',
+      entity: 'user',
+      entityId: actorId,
+    });
   }
   return { ok: true };
 }

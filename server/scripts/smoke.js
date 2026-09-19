@@ -32,6 +32,16 @@ async function call(method, path, { token, body, tenant, expect = 200 } = {}) {
     console.error(`  ✗ ${method} ${path} -> no response (${err.message}). Is the API still running?`);
     return { status: 0, json: null };
   }
+
+  // Out of quota is not a product failure. Wait the window out and try once more
+  // so a suite run straight after another does not report a meaningless red.
+  if (res.status === 429) {
+    const waitSec = Math.min(Number(res.headers.get('retry-after')) || 60, 120);
+    console.log(`  rate limited on ${method} ${path} - waiting ${waitSec}s and retrying`);
+    await new Promise((r) => setTimeout(r, waitSec * 1000 + 500));
+    return call(method, path, { token, body, tenant, expect });
+  }
+
   let json = null;
   try {
     json = text ? JSON.parse(text) : null;
@@ -63,6 +73,32 @@ async function login(email, password, tenantSlug) {
 console.log(`\nSmoke test against ${BASE}\n`);
 
 // ---------------------------------------------------------------- platform
+/**
+ * The smoke run makes ~95 requests, so running it twice inside one rate-limit
+ * window trips the limiter and every later assertion fails with 429. Wait the
+ * window out first rather than reporting a red suite that means nothing. The
+ * limiter itself is deliberately left alone.
+ */
+async function waitForRateLimitWindow() {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    // /api/health is mounted ahead of the limiter, so it stays 200 even when
+    // everything else is throttled. Probe a limited route instead: unauthenticated
+    // it answers 401 when the window has room and 429 when it does not.
+    const res = await fetch(`${BASE}/api/members`).catch(() => null);
+    if (!res) {
+      console.error(`  ✗ no response from ${BASE}. Is the API running? (npm run dev:server)`);
+      process.exit(1);
+    }
+    if (res.status !== 429) return;
+    const retryAfter = Number(res.headers.get('retry-after')) || 60;
+    const waitMs = Math.min(retryAfter, 120) * 1000 + 500;
+    console.log(`  rate limit window exhausted - waiting ${Math.round(waitMs / 1000)}s before starting`);
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+}
+
+await waitForRateLimitWindow();
+
 await call('GET', '/api/health');
 await call('GET', '/api/members', { expect: 401 }); // no token
 await call('POST', '/api/auth/login', { body: { email: 'nobody@x.test', password: 'nope1234', tenantSlug: 'demo-gym' }, expect: 401 });

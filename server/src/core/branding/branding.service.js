@@ -43,43 +43,8 @@ const COLUMNS = {
 
 const JSON_COLUMNS = { socialLinks: 'social_links', terminology: 'terminology' };
 
-export function shapeBranding(row, tenant) {
-  if (!row) return null;
-  return {
-    businessName: row.business_name,
-    shortName: row.short_name,
-    appName: row.app_name,
-    browserTitle: row.browser_title,
-    description: row.description,
-    tagline: row.tagline,
-    email: row.email,
-    phone: row.phone,
-    address: row.address,
-    city: row.city,
-    country: row.country,
-    website: row.website,
-    socialLinks: row.social_links || {},
-    currency: row.currency,
-    currencySymbol: row.currency_symbol,
-    timezone: row.timezone,
-    locale: row.locale,
-    logoUrl: row.logo_url,
-    logoLightUrl: row.logo_light_url,
-    logoDarkUrl: row.logo_dark_url,
-    faviconUrl: row.favicon_url,
-    loginLogoUrl: row.login_logo_url,
-    loginBackgroundUrl: row.login_background_url,
-    appIconUrl: row.app_icon_url,
-    splashUrl: row.splash_url,
-    themeColor: row.theme_color,
-    backgroundColor: row.background_color,
-    terminology: row.terminology || {},
-    updatedAt: row.updated_at,
-    tenant: tenant
-      ? { id: tenant.id, slug: tenant.slug, name: tenant.name, vertical: tenant.vertical }
-      : undefined,
-  };
-}
+export { shapeBranding } from './branding.shape.js';
+import { shapeBranding } from './branding.shape.js';
 
 export async function getBranding(tenantId) {
   const [branding, tenant] = await Promise.all([

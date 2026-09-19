@@ -203,11 +203,27 @@ export const PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);
 /** Extra cross-cutting permissions that are not tied to a single module. */
 export const PLATFORM_PERMISSIONS = [
   {
+    key: 'branding.view',
+    module: 'settings',
+    action: 'view',
+    label: 'View branding',
+    description: 'See business name, logos and contact details',
+    group: 'platform',
+  },
+  {
     key: 'branding.manage',
     module: 'settings',
     action: 'manage',
     label: 'Manage branding',
     description: 'Change business name, logos, favicon and contact details',
+    group: 'platform',
+  },
+  {
+    key: 'theme.view',
+    module: 'settings',
+    action: 'view',
+    label: 'View themes',
+    description: 'See the available themes and the active one',
     group: 'platform',
   },
   {
