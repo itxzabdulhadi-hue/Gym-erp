@@ -41,6 +41,30 @@ import expensesRoutes from './verticals/gym/expenses/expenses.routes.js';
 import reportsRoutes from './verticals/gym/reports/reports.routes.js';
 
 /**
+ * Origins allowed to call the API from a browser.
+ *
+ * Everything a deployment can know up front comes from `CORS_ORIGINS`. Outside
+ * production we also accept the sandbox/preview hosts (a proxied port gets a
+ * fresh `*.e2b.app` hostname per session, so it cannot be listed in `.env`),
+ * plus the local Vite dev server. Production stays allow-list only.
+ */
+const PREVIEW_ORIGIN = /^https:\/\/[a-z0-9][a-z0-9-]*\.e2b\.app$/;
+const DEV_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173'];
+
+export function isAllowedOrigin(origin) {
+  if (!origin) return true; // same-origin requests and non-browser clients
+  if (config.corsOrigins.includes(origin)) return true;
+  if (config.isProduction) return false;
+  return DEV_ORIGINS.includes(origin) || PREVIEW_ORIGIN.test(origin);
+}
+
+/** Origins advertised to the browser through `connect-src`. */
+function connectSources() {
+  const extra = config.isProduction ? [] : [...DEV_ORIGINS, 'https://*.e2b.app'];
+  return ["'self'", ...new Set([...config.corsOrigins, ...extra])];
+}
+
+/**
  * Express application factory.
  *
  * Exported separately from the HTTP server so the same app can run under
@@ -65,7 +89,7 @@ export function createApp() {
           styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
           fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
           imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-          connectSrc: ["'self'", ...config.corsOrigins],
+          connectSrc: connectSources(),
           manifestSrc: ["'self'", 'blob:'],
           workerSrc: ["'self'", 'blob:'],
           objectSrc: ["'none'"],
@@ -82,12 +106,7 @@ export function createApp() {
 
   app.use(
     cors({
-      origin: (origin, callback) => {
-        // Same-origin requests (and non-browser clients) have no Origin header.
-        if (!origin) return callback(null, true);
-        if (!config.corsOrigins.length) return callback(null, true);
-        return callback(null, config.corsOrigins.includes(origin));
-      },
+      origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
       credentials: true,
       exposedHeaders: ['Content-Disposition'],
     }),
