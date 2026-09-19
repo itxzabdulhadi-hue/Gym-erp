@@ -1,0 +1,44 @@
+{
+  "name": "@erp/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-tenant ERP REST API (Node.js + Express + PostgreSQL).",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "migrate": "node scripts/migrate.js",
+    "migrate:status": "node scripts/migrate.js --status",
+    "seed": "node scripts/seed.js",
+    "db:reset": "node scripts/db-reset.js",
+    "test": "vitest run --reporter=basic",
+    "test:watch": "vitest",
+    "maintenance": "node scripts/maintenance.js",
+    "check": "node scripts/check-imports.mjs",
+    "smoke": "node scripts/smoke.js"
+  },
+  "dependencies": {
+    "@erp/shared": "*",
+    "bcryptjs": "^2.4.3",
+    "compression": "^1.7.5",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.0.0",
+    "pg": "^8.13.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

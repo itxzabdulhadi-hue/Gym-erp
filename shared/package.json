@@ -1,0 +1,15 @@
+{
+  "name": "@erp/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Contracts shared between the API server and the web client: module registry, permission catalogue, theme schema and tenant-safe constants.",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./modules": "./src/modules.js",
+    "./permissions": "./src/permissions.js",
+    "./theme": "./src/theme.js",
+    "./verticals": "./src/verticals.js"
+  }
+}

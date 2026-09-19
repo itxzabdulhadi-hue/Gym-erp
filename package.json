@@ -1,0 +1,35 @@
+{
+  "name": "white-label-erp-platform",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "White-label, multi-tenant ERP platform. First vertical: Gym ERP.",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "setup": "npm install && npm run db:up --if-present",
+    "db:up": "node scripts/pg-server.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "npm run dev --workspace web",
+    "dev:server": "npm run dev --workspace server",
+    "migrate": "npm run migrate --workspace server",
+    "migrate:status": "npm run migrate:status --workspace server",
+    "seed": "npm run seed --workspace server",
+    "db:reset": "npm run db:reset --workspace server",
+    "build": "npm run build --workspace web",
+    "start": "npm run start --workspace server",
+    "test": "npm run test --workspace server",
+    "typecheck": "echo \"JavaScript project - no typecheck step (see npm run lint)\"",
+    "lint": "node scripts/lint.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-socket": "0.2.11"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
