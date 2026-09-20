@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import config from './config/env.js';
-import { ping } from './db/index.js';
+import { ping, schemaReady } from './db/index.js';
 import { apiLimiter } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
@@ -125,7 +125,18 @@ export function createApp() {
   app.get('/api/health', async (_req, res) => {
     try {
       const dbOk = await ping();
-      res.status(dbOk ? 200 : 503).json({ status: dbOk ? 'ok' : 'degraded', db: dbOk, ...config.public() });
+      // A connection that works is not the same as a migrated database: report
+      // the schema separately so a missing migration is obvious here instead of
+      // surfacing as an opaque 500 on the first real request.
+      const schemaOk = dbOk ? await schemaReady() : false;
+      const ok = dbOk && schemaOk;
+      res.status(ok ? 200 : 503).json({
+        status: ok ? 'ok' : 'degraded',
+        db: dbOk,
+        schema: schemaOk,
+        ...(schemaOk ? {} : { hint: 'Database schema not found - run: npm run migrate' }),
+        ...config.public(),
+      });
     } catch (err) {
       res.status(503).json({ status: 'down', db: false, error: err.message });
     }

@@ -49,6 +49,9 @@ check(
   health.headers.get('content-type')?.includes('application/json') && /"db":/.test(health.text),
   health.text.slice(0, 70),
 );
+// A reachable database is not a migrated one. Health must say which, or a
+// missing migration shows up as an opaque 500 on the first real request.
+check('health reports schema:true on a migrated database', /"schema":true/.test(health.text), health.text.slice(0, 90));
 
 // A deep API path proves the /api/(.*) -> /api rewrite target keeps the full
 // original path visible to Express (this is what makes the app's own routers

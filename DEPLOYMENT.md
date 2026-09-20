@@ -292,6 +292,9 @@ single-project layout in this guide avoids the problem entirely.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
+| `POST /api/auth/login` returns 500 `INTERNAL_ERROR` | Almost always the schema is missing: migrations were never run against the production database. The log line reads `relation "tenants" does not exist`. | Run `npm run migrate` with `DATABASE_URL` pointed at production (§4.3). `GET /api/health` now reports `"schema":false` with a hint when this is the cause. |
+| `/api/health` returns 503 with `"schema":false` | Database is reachable but unmigrated. | `npm run migrate`, then re-check. |
+| `/api/health` returns 503 with `"db":false` | The database is unreachable — wrong `DATABASE_URL`, SSL, or Neon IP allow-list. The response `error` field carries the driver's own message. | Fix the connection string; check Neon's allow-list. |
 | Build fails: `vite: command not found` (exit 127) | Vercel builds with `NODE_ENV=production`, and npm omits devDependencies in that mode — so `vite`, `tailwindcss`, `postcss` and `autoprefixer` are never installed. | Install Command must be `npm ci --include=dev`. |
 | Build fails: `Cannot find module 'pg'` | Dependencies not installed from the lockfile. | Set Install Command to `npm ci --include=dev`. `pg` is declared in `server/package.json`. |
 | Function throws `Invalid environment configuration` | A required variable is missing, or `DATABASE_SSL` is not `auto`/`true`/`false`. | Check the boot error in the function log — it names the exact variable. |

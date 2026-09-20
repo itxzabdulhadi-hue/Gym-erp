@@ -147,6 +147,21 @@ export async function ping() {
   return res.rows[0]?.ok === 1;
 }
 
+/**
+ * Has the schema been migrated?
+ *
+ * `ping()` only proves the connection works, so an empty database still reports
+ * a healthy 200 while every real endpoint 500s with "relation ... does not
+ * exist". That is a miserable thing to debug from a serverless log, so /health
+ * checks for the platform's root table as well and says so plainly.
+ */
+export async function schemaReady() {
+  const res = await query(
+    `select to_regclass('public.tenants') is not null as ok`,
+  );
+  return res.rows[0]?.ok === true;
+}
+
 // Migration tooling is re-exported so callers have a single entry point.
 export {
   migrate,

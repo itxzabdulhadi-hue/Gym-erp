@@ -5,7 +5,7 @@ import { ERROR_CODES } from '@erp/shared';
  * JSON shape, so stack traces never reach the client.
  */
 export class ApiError extends Error {
-  constructor(status, message, { code, details, expose = true } = {}) {
+  constructor(status, message, { code, details, expose = true, debug } = {}) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
@@ -13,6 +13,9 @@ export class ApiError extends Error {
     this.details = details;
     // `expose: false` marks internal errors: the client gets a generic message.
     this.expose = expose;
+    // Underlying cause for the server log only. Never serialised to the client
+    // except in development (see middleware/errorHandler.js).
+    this.debug = debug;
   }
 
   static badRequest(message = 'Bad request', details) {
