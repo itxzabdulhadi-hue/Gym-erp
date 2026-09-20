@@ -75,7 +75,19 @@ if (!parsed.success) {
   const issues = parsed.error.issues.map((i) => `  • ${i.path.join('.') || 'env'}: ${i.message}`).join('\n');
   // Fail fast and loudly: a server that boots with missing secrets is worse than
   // one that refuses to start.
-  throw new Error(`Invalid environment configuration${envFile ? ` (${envFile})` : ' (no .env found)'}:\n${issues}`);
+  //
+  // Note the source is always `process.env`. A `.env` file is only a local
+  // convenience loaded above - on a platform such as Vercel there deliberately
+  // is no `.env`, and these must be set as deployment environment variables.
+  // Say so, because "(no .env found)" reads like a missing file is the problem.
+  const source = envFile
+    ? `read from ${envFile} and the process environment`
+    : 'no .env file present, so only the process environment was read';
+  throw new Error(
+    `Invalid environment configuration (${source}):\n${issues}\n` +
+      'Set the variables above in the environment - on Vercel: Project -> Settings -> Environment Variables. ' +
+      'A .env file is for local development only and must never be committed or bundled.',
+  );
 }
 
 const env = parsed.data;
