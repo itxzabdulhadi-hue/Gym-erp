@@ -215,7 +215,7 @@ or remove it before going live**), or provision through the API.
    | Framework Preset | **Other** |
    | Build Command | `npm run build --workspace web` |
    | Output Directory | `web/dist` |
-   | Install Command | `npm ci` |
+   | Install Command | `npm ci --include=dev` |
    | Root Directory | *(leave empty)* |
 
    Do **not** set Root Directory to `web/`. The function lives in `api/` at the
@@ -292,7 +292,8 @@ single-project layout in this guide avoids the problem entirely.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| Build fails: `Cannot find module 'pg'` | Dependencies not installed from the lockfile. | Set Install Command to `npm ci`. `pg` is declared in `server/package.json`. |
+| Build fails: `vite: command not found` (exit 127) | Vercel builds with `NODE_ENV=production`, and npm omits devDependencies in that mode — so `vite`, `tailwindcss`, `postcss` and `autoprefixer` are never installed. | Install Command must be `npm ci --include=dev`. |
+| Build fails: `Cannot find module 'pg'` | Dependencies not installed from the lockfile. | Set Install Command to `npm ci --include=dev`. `pg` is declared in `server/package.json`. |
 | Function throws `Invalid environment configuration` | A required variable is missing, or `DATABASE_SSL` is not `auto`/`true`/`false`. | Check the boot error in the function log — it names the exact variable. |
 | Function throws `Cannot find module '@erp/shared'` | Workspace files were not traced into the bundle. | Confirm Root Directory is the repo root (not `web/`); `functions.includeFiles` in `vercel.json` keeps `shared/**`. |
 | `/api/*` returns the HTML login page | SPA fallback is matching API paths. | Confirm the `/api/(.*)` rewrite is present and ordered before the fallback. |
@@ -308,7 +309,13 @@ single-project layout in this guide avoids the problem entirely.
 
 Checked here, without Vercel or Neon access:
 
-- `npm ci` installs cleanly from the committed lockfile.
+- `npm ci --include=dev` installs cleanly from the committed lockfile **with
+  `NODE_ENV=production`** — the exact condition Vercel builds under. A bare
+  `npm ci` omits devDependencies in that mode and the build fails with
+  `vite: command not found`.
+- The `installCommand` and `buildCommand` read out of `vercel.json` were run
+  from a wiped `node_modules` and `web/dist` under `NODE_ENV=production`:
+  install 390 packages, build exit 0, `web/dist/index.html` produced.
 - `npm run lint` — 92 files.
 - `npm run check` — 78 server modules load.
 - `npm run test` — 16 files, 326 tests.
